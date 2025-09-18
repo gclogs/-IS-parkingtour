@@ -133,7 +133,7 @@ function CreateMarkerPageContent() {
         const created = await convex.mutation(api.markers.create, newMarkerPayload);
 
         toast.success("마커가 성공적으로 생성되었습니다! 🎉");
-        router.push(`/?lat=${lat}&lng=${lng}&zoom=15&newMarker=${created?._id ?? "1"}`);
+        router.push(`/map?lat=${lat}&lng=${lng}&zoom=15&newMarker=${created?._id ?? "1"}`);
       } else {
         // 설정 전까지는 로컬 저장소에 저장 (임시) 또는 서버 사이드 렌더링 시
         const tempMarker = {

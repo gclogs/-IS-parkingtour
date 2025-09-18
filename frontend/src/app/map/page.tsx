@@ -18,7 +18,6 @@ import { useParkingMarkers, type ParkingMarkerData } from "@/hooks/useParkingMar
 import { CreateMarkerFAB } from "@/components/ui/CreateMarkerFAB";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { MarkerInfoPanel } from "@/components/ui/MarkerInfoPanel";
-import { CreateMarkerModal } from "@/components/ui/CreateMarkerModal";
 import { ParkingMapModal } from "@/components/parking/ParkingMapModal";
 
 // 검색 결과 타입 정의
@@ -34,7 +33,6 @@ function MapPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedMarker, setSelectedMarker] = useState<MarkerData | ParkingMarkerData | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [clickPosition, setClickPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [markers, setMarkers] = useState<MarkerData[]>([]);
@@ -59,58 +57,82 @@ function MapPageContent() {
     libraries: ["services", "clusterer", "drawing"],
   });
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    const loadInitialData = async () => {
-      if (!isConvexConfigured) {
-        setError("Convex가 설정되지 않았습니다.");
-        setIsLoading(false);
-        return;
-      }
+  // 마커 데이터 로드 함수
+  const loadMarkersData = useCallback(async () => {
+    if (!isConvexConfigured) {
+      setError("Convex가 설정되지 않았습니다.");
+      setIsLoading(false);
+      return;
+    }
 
-      try {
-        setIsLoading(true);
-        const markersData = await convex.query(api.markers.list);
-        
-        // Convex 데이터를 MarkerData 형식으로 변환
-        const transformedMarkers: MarkerData[] = markersData.map((marker: any, index: number) => ({
-          id: marker._id,
-          name: marker.name,
-          category: marker.category,
-          description: marker.description,
-          address: marker.address,
-          rating: marker.rating,
-          position: {
-            lat: marker.lat || marker.position?.lat || 37.566826,
-            lng: marker.lng || marker.position?.lng || 126.9786567
-          },
-          congestionVotes: marker.congestionVotes,
-          congestionStats: marker.congestionStats,
-          // 게시판 기능을 위한 추가 데이터
-          images: marker.images || [],
-          commentCount: marker.commentCount || 0,
-          createdAt: marker.createdAt || new Date().toISOString(),
-          author: marker.author || '익명',
-          viewCount: marker.viewCount || 0,
-          likes: marker.likes || 0
-        }));
-        
-        setMarkers(transformedMarkers);
-      } catch (err) {
-        console.error("마커 데이터 로드 실패:", err);
-        setError("마커 데이터를 불러오는데 실패했습니다.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadInitialData();
+    try {
+      setIsLoading(true);
+      const markersData = await convex.query(api.markers.list);
+      
+      // Convex 데이터를 MarkerData 형식으로 변환
+      const transformedMarkers: MarkerData[] = markersData.map((marker: any, index: number) => ({
+        id: marker._id,
+        name: marker.name,
+        category: marker.category,
+        description: marker.description,
+        address: marker.address,
+        rating: marker.rating,
+        position: {
+          lat: marker.lat || marker.position?.lat || 37.566826,
+          lng: marker.lng || marker.position?.lng || 126.9786567
+        },
+        congestionVotes: marker.congestionVotes,
+        congestionStats: marker.congestionStats,
+        // 게시판 기능을 위한 추가 데이터
+        images: marker.images || [],
+        commentCount: marker.commentCount || 0,
+        createdAt: marker.createdAt || new Date().toISOString(),
+        author: marker.author || '익명',
+        viewCount: marker.viewCount || 0,
+        likes: marker.likes || 0
+      }));
+      
+      setMarkers(transformedMarkers);
+    } catch (err) {
+      console.error("마커 데이터 로드 실패:", err);
+      setError("마커 데이터를 불러오는데 실패했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  // URL 파라미터에서 마커 ID 확인
+  // 초기 데이터 로드
+  useEffect(() => {
+    loadMarkersData();
+  }, [loadMarkersData]);
+
+  // URL 파라미터에서 마커 ID 및 새 마커 확인
   useEffect(() => {
     const markerId = searchParams.get('marker');
-    if (markerId && markers.length > 0) {
+    const newMarkerId = searchParams.get('newMarker');
+    const lat = searchParams.get('lat');
+    const lng = searchParams.get('lng');
+    const zoom = searchParams.get('zoom');
+
+    // 새로 생성된 마커가 있는 경우
+    if (newMarkerId && lat && lng) {
+      setCenter({ lat: parseFloat(lat), lng: parseFloat(lng) });
+      setLevel(zoom ? parseInt(zoom) : 2);
+      
+      // 마커 데이터를 새로고침하여 새로 생성된 마커를 가져옴
+      loadMarkersData().then(() => {
+        // 새로고침 후 새 마커 찾기 시도
+        setTimeout(() => {
+          const newMarker = markers.find(m => m.id.toString() === newMarkerId);
+          if (newMarker) {
+            setSelectedMarker(newMarker);
+            toast.success("새로 생성된 마커로 이동했습니다!");
+          }
+        }, 500); // 약간의 지연을 두어 데이터 로드 완료 대기
+      });
+    }
+    // 기존 마커 선택 로직
+    else if (markerId && markers.length > 0) {
       const marker = markers.find(m => m.id.toString() === markerId);
       if (marker && marker.position) {
         setSelectedMarker(marker);
@@ -140,66 +162,17 @@ function MapPageContent() {
     setContextMenu(null);
   }, []);
 
-  // 마커 생성 핸들러
+  // 마커 생성 핸들러 (페이지로 이동)
   const handleCreateMarker = useCallback(() => {
     setContextMenu(null);
-    setIsCreateModalOpen(true);
-  }, []);
-
-  // 마커 생성 제출 핸들러
-  const handleCreateMarkerSubmit = useCallback(async (data: { 
-    name: string; 
-    category: string; 
-    description: string; 
-    rating: number;
-    congestionVotes?: { available: number; moderate: number; crowded: number };
-  }) => {
-    if (!clickPosition || !isConvexConfigured) return;
-
-    try {
-      const newMarker = await convex.mutation(api.markers.create, {
-        name: data.name,
-        category: data.category,
-        description: data.description,
-        lat: clickPosition.lat,
-        lng: clickPosition.lng,
-        rating: data.rating,
-        address: "주소 정보 없음",
-        congestionVotes: data.congestionVotes,
-      });
-
-      // 마커 목록 업데이트
-      const transformedNewMarker: MarkerData = {
-        id: newMarker._id,
-        name: newMarker.name,
-        category: newMarker.category,
-        description: newMarker.description,
-        address: newMarker.address,
-        rating: newMarker.rating,
-        position: {
-          lat: newMarker.lat,
-          lng: newMarker.lng
-        },
-        congestionVotes: newMarker.congestionVotes,
-        congestionStats: newMarker.congestionStats,
-        images: [],
-        commentCount: 0,
-        createdAt: new Date().toISOString(),
-        author: '익명',
-        viewCount: 0,
-        likes: 0
-      };
-      
-      setMarkers(prev => [transformedNewMarker, ...prev]);
-      setIsCreateModalOpen(false);
-      setClickPosition(null);
-      
-      toast.success("마커가 성공적으로 생성되었습니다!");
-    } catch (error) {
-      console.error("마커 생성 실패:", error);
-      toast.error("마커 생성에 실패했습니다.");
+    // 클릭한 위치 정보를 URL 파라미터로 전달
+    if (clickPosition) {
+      router.push(`/create-marker?lat=${clickPosition.lat}&lng=${clickPosition.lng}`);
+    } else {
+      router.push('/create-marker');
     }
-  }, [clickPosition]);
+  }, [clickPosition, router]);
+
 
   // 세부정보 보기 핸들러
   const handleViewDetails = useCallback((markerId: number) => {
@@ -336,9 +309,32 @@ function MapPageContent() {
             {/* 주차장 지도 버튼 */}
             <button
               onClick={() => setShowParkingMapModal(true)}
-              className="w-full px-3 py-2 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 transition-colors flex items-center justify-center gap-1"
+              className="w-full px-3 py-2 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 transition-colors flex items-center justify-center gap-1 mb-2"
             >
               주차장 전용 지도
+            </button>
+            
+            {/* 마커 생성 페이지로 이동 버튼 */}
+            <button
+              onClick={() => router.push('/create-marker')}
+              className="w-full px-3 py-2 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-green-200 transition-colors flex items-center justify-center gap-1 mb-2"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              마커 생성 페이지
+            </button>
+            
+            {/* 마커 새로고침 버튼 */}
+            <button
+              onClick={loadMarkersData}
+              disabled={isLoading}
+              className="w-full px-3 py-2 text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-md border border-gray-200 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {isLoading ? '새로고침 중...' : '마커 새로고침'}
             </button>
           </div>
         </div>
@@ -346,7 +342,7 @@ function MapPageContent() {
 
       {/* FAB */}
       <div className="absolute bottom-6 right-6">
-        <CreateMarkerFAB onClick={() => setIsCreateModalOpen(true)} />
+        <CreateMarkerFAB onClick={() => router.push('/create-marker')} />
       </div>
 
       {/* 컨텍스트 메뉴 */}
@@ -356,12 +352,6 @@ function MapPageContent() {
         onClose={handleCloseContextMenu}
       />
 
-      {/* 마커 생성 모달 */}
-      <CreateMarkerModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={handleCreateMarkerSubmit}
-      />
 
       {/* 주차장 지도 모달 */}
       <ParkingMapModal
