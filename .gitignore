@@ -1,0 +1,11 @@
+# Global ignores
+**/node_modules
+**/.next
+**/.vercel
+**/dist
+**/.env*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
