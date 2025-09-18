@@ -85,6 +85,9 @@ export interface CombinedParkingInfo extends ParkingFacilityInfo {
   occupied?: number; // 점유 대수 (total - available)
   congestionLevel?: 'low' | 'medium' | 'high'; // 혼잡도 레벨
   hasRealtimeData?: boolean; // 실시간 데이터 존재 여부
+  // 호환성을 위한 요금 정보 (operation에서 추출)
+  basicCharge?: number; // 기본 요금
+  basicTime?: number; // 기본 시간
 }
 
 // 도시별 검색을 위한 인터페이스
@@ -254,7 +257,10 @@ class ParkingApiService {
           operation,
           realtime,
           occupancyRate,
-          congestionLevel
+          congestionLevel,
+          // 호환성을 위한 요금 정보 추출
+          basicCharge: operation?.basic_info?.parking_chrge_bs_chrge || operation?.basicCharge,
+          basicTime: operation?.basic_info?.parking_chrge_bs_time || operation?.basicTime
         };
       });
 
@@ -391,7 +397,10 @@ class ParkingApiService {
           operation,
           realtime,
           hasRealtimeData: !!realtime,
-          ...occupancyData
+          ...occupancyData,
+          // 호환성을 위한 요금 정보 추출
+          basicCharge: operation?.basic_info?.parking_chrge_bs_chrge || operation?.basicCharge,
+          basicTime: operation?.basic_info?.parking_chrge_bs_time || operation?.basicTime
         };
       });
 

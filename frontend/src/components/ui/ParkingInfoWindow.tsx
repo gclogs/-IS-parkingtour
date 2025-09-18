@@ -6,7 +6,29 @@ interface ParkingInfoWindowProps {
   onClose: () => void;
 }
 
+// 안전한 데이터 접근을 위한 헬퍼 함수들
+const getCurrentParking = (marker: ParkingMarkerData): number => {
+  const realtime = marker.parkingInfo?.realtime;
+  if (realtime) {
+    const total = realtime.pkfc_ParkingLots_total || realtime.capacity || 0;
+    const available = realtime.pkfc_Available_ParkingLots_total || realtime.curParking || 0;
+    return total - available;
+  }
+  return 0;
+};
+
+const getTotalCapacity = (marker: ParkingMarkerData): number => {
+  return marker.parkingInfo?.realtime?.pkfc_ParkingLots_total || 
+         marker.parkingInfo?.realtime?.capacity || 
+         marker.parkingInfo?.prk_cmprt_co || 
+         marker.parkingInfo?.prkcmprt || 0;
+};
+
 export function ParkingInfoWindow({ marker, onClose }: ParkingInfoWindowProps) {
+  // marker가 없는 경우 처리
+  if (!marker) {
+    return null;
+  }
   const getCongestionText = (level: 'low' | 'medium' | 'high') => {
     switch (level) {
       case 'low': return '여유';
@@ -23,9 +45,15 @@ export function ParkingInfoWindow({ marker, onClose }: ParkingInfoWindowProps) {
     }
   };
 
-  const occupancyRate = marker.parkingInfo.realtime && marker.parkingInfo.realtime.capacity > 0 
-    ? Math.round((marker.parkingInfo.realtime.curParking / marker.parkingInfo.realtime.capacity) * 100)
-    : Math.round(marker.occupancyRate || 0);
+  const occupancyRate = (() => {
+    const realtime: any = marker.parkingInfo?.realtime;
+    if (realtime && (realtime.pkfc_ParkingLots_total || realtime.capacity) > 0) {
+      const total = realtime.pkfc_ParkingLots_total || realtime.capacity || 0;
+      const used = total - (realtime.pkfc_Available_ParkingLots_total || realtime.curParking || 0);
+      return Math.round((used / total) * 100);
+    }
+    return Math.round(marker.occupancyRate || 0);
+  })();
 
   return (
     <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4 min-w-[280px] max-w-[320px]">
@@ -73,13 +101,13 @@ export function ParkingInfoWindow({ marker, onClose }: ParkingInfoWindowProps) {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-blue-50 rounded-lg p-3 text-center">
             <div className="text-2xl font-bold text-blue-600">
-              {marker.parkingInfo.realtime?.curParking || 0}
+              {getCurrentParking(marker)}
             </div>
             <div className="text-xs text-blue-600 font-medium">현재 주차</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-3 text-center">
             <div className="text-2xl font-bold text-gray-600">
-              {marker.parkingInfo.realtime?.capacity || marker.parkingInfo.prkcmprt || 0}
+              {getTotalCapacity(marker)}
             </div>
             <div className="text-xs text-gray-600 font-medium">전체 자리</div>
           </div>
@@ -99,7 +127,7 @@ export function ParkingInfoWindow({ marker, onClose }: ParkingInfoWindowProps) {
         )}
 
         {/* 요금 정보 */}
-        {marker.parkingInfo.basicCharge && (
+        {marker.parkingInfo?.basicCharge && (
           <div className="bg-yellow-50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-1">
               <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,13 +136,14 @@ export function ParkingInfoWindow({ marker, onClose }: ParkingInfoWindowProps) {
               <span className="text-sm font-medium text-yellow-700">주차 요금</span>
             </div>
             <span className="text-sm text-yellow-600">
-              기본요금: {marker.parkingInfo.basicCharge}원 ({marker.parkingInfo.basicTime}분)
+              기본요금: {marker.parkingInfo.basicCharge}원 
+              ({marker.parkingInfo.basicTime || '정보없음'}분)
             </span>
           </div>
         )}
 
         {/* 운영시간 */}
-        {marker.parkingInfo.operation && (
+        {marker.parkingInfo?.operation && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
